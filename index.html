@@ -68,9 +68,7 @@
                         },
                     };
 
-                    modelUrl = 'https://drive.google.com/uc?export=download&id=1knFO6flmHFD59cnaFBERNDquJowV63oJ'; 
-                    modelData = await fetchModel(modelUrl); 
-                    const unetsession = await ort.InferenceSession.create(modelData.buffer, sessionOptions); 
+                    const unetsession = await ort.InferenceSession.create('distilled_q.onnx', sessionOptions); 
                     document.body.insertAdjacentHTML('beforeend', '<p>Diffusion model loaded.</p>'); 
                     logMemoryUsage("After loading diffusion model");
                     
@@ -85,9 +83,7 @@
 
                     await unetsession.release();
 
-                    modelUrl = 'https://drive.google.com/uc?export=download&id=1FFViPMyQ6GmbKQumoxRYWZyYVi723Quz/';
-                    modelData = await fetchModel(modelUrl); 
-                    const decodersession = await ort.InferenceSession.create(modelData.buffer, sessionOptions);
+                    const decodersession = await ort.InferenceSession.create('tiny_decoder_q.onnx', sessionOptions);
                     document.body.insertAdjacentHTML('beforeend', '<p>Decoder model loaded.</p>');
                     logMemoryUsage("After loading decoder model");
 
