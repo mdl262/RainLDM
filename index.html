@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>ONNX Runtime JavaScript Example: Quick Start</title>
+        <meta http-equiv="Cross-Origin-Opener-Policy" content="cross-origin"> 
+        <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/npyjs"></script>
+    
+        <script src="https://unpkg.com/wasm-feature-detect/dist/umd/index.js"></script>
+        <script>
+            
+        </script>
+    </head>
+    <body>
+        <button id="load">Load Model</button>
+        <script crossorigin>
+            function gaussianRandom() {
+                let u = 0, v = 0;
+                while (u === 0) u = Math.random();
+                while (v === 0) v = Math.random();
+
+                const mag = Math.sqrt(-2.0 * Math.log(u));
+                const z0 = mag * Math.cos(2.0 * Math.PI * v);
+                return z0;
+            }
+
+            async function fetchModel(url) { 
+                const response = await fetch(url);
+                 const arrayBuffer = await response.arrayBuffer(); 
+                 return new Uint8Array
+            }
+
+            function createRandomTensor(shape) {
+                const size = shape.reduce((a, b) => a * b);
+                const randomData = new Float32Array(size).map(() => gaussianRandom());
+                return new ort.Tensor('float32', randomData, shape);
+            }
+
+            function logMemoryUsage(stage) {
+                if (performance.memory) {
+                    const { usedJSHeapSize, totalJSHeapSize, jsHeapSizeLimit } = performance.memory;
+                    const usedMB = (usedJSHeapSize / 1048576).toFixed(2);
+                    const totalMB = (totalJSHeapSize / 1048576).toFixed(2);
+                    const limitMB = (jsHeapSizeLimit / 1048576).toFixed(2);
+                    console.log(`${stage} - Memory Usage: ${usedMB} MB / ${totalMB} MB (Limit: ${limitMB} MB)`);
+                    document.body.insertAdjacentHTML('beforeend', `<p>${stage} - Memory Usage: ${usedMB} MB / ${totalMB} MB (Limit: ${limitMB} MB)</p>`);
+                } else {
+                    console.log("Memory measurement not supported in this browser.");
+                    document.body.insertAdjacentHTML('beforeend', `<p>Memory measurement not supported in this browser.</p>`);
+                }
+            }
+
+            async function test() {
+                try {
+                    ort.env.wasm.numThreads = 4;
+                    if (await wasmFeatureDetect.simd()) {
+                        console.log("enabled");
+                    }
+                    console.log("Loading model...");
+                    document.body.insertAdjacentHTML('beforeend', '<p>Model loading...</p>');
+
+                    const sessionOptions = {
+                        executionProviders: ['wasm'],
+                        wasm: {
+                            numThreads: 4,
+                            simd: true,
+                        },
+                    };
+
+                    modelUrl = 'https://drive.google.com/uc?export=download&id=1knFO6flmHFD59cnaFBERNDquJowV63oJ'; 
+                    modelData = await fetchModel(modelUrl); 
+                    const unetsession = await ort.InferenceSession.create(modelData.buffer, sessionOptions); 
+                    document.body.insertAdjacentHTML('beforeend', '<p>Diffusion model loaded.</p>'); 
+                    logMemoryUsage("After loading diffusion model");
+                    
+                    
+                    
+                    shape = [1, 1024, 1024];
+                    feeds = { noise: createRandomTensor(shape) };
+
+                    console.log("Running diffusion model...");
+                    document.body.insertAdjacentHTML('beforeend', '<p>Running diffusion model...</p>');
+                    const diffusionOutput = await unetsession.run(feeds);
+
+                    await unetsession.release();
+
+                    modelUrl = 'https://drive.google.com/uc?export=download&id=1FFViPMyQ6GmbKQumoxRYWZyYVi723Quz/';
+                    modelData = await fetchModel(modelUrl); 
+                    const decodersession = await ort.InferenceSession.create(modelData.buffer, sessionOptions);
+                    document.body.insertAdjacentHTML('beforeend', '<p>Decoder model loaded.</p>');
+                    logMemoryUsage("After loading decoder model");
+
+                    console.log("Running upsample...");
+                    document.body.insertAdjacentHTML('beforeend', '<p>Upsampling...</p>');
+
+                    const decoderFeed = { z_quantized: diffusionOutput.z };
+                    //console.log("Shape of data:", diffusionOutput.z.dims);
+                    const start = performance.now(); // Start timing the decoder
+                    const decoderOutput = await decodersession.run(decoderFeed);
+                    const end = performance.now(); // End timing the decoder
+
+                    const decodeTime = (end - start).toFixed(2);
+                    document.body.insertAdjacentHTML('beforeend', `<p>Decoder run time: ${decodeTime} ms</p>`);
+                    console.log(`Decoder run time: ${decodeTime} ms`);
+
+                    console.log("Shape of decoderOutput data:", decoderOutput.s.dims);
+                    document.body.insertAdjacentHTML('beforeend', `<p>Shape of decoderOutput data: ${decoderOutput.s.dims.join(', ')}</p>`);
+
+                    const audioData = decoderOutput.s.data;
+
+                    if (audioData.length > 0) {
+                        playAudio(audioData);
+                    } else {
+                        console.error("Error: Audio data shape is invalid.");
+                        document.body.insertAdjacentHTML('beforeend', '<p>Error: Audio data shape is invalid.</p>');
+                    }
+
+                    document.body.insertAdjacentHTML('beforeend', `<p>Complete</p>`);
+
+                } catch (e) {
+                    console.error("Failed to run the model:", e);
+                    document.body.insertAdjacentHTML('beforeend', `<p>Failed to run the model: ${e.message}</p>`);
+                }
+            }
+
+            function getMax(arr) {
+                let len = arr.length;
+                let max = -Infinity;
+
+                while (len--) {
+                    max = arr[len] > max ? arr[len] : max;
+                }
+                return max;
+            }
+
+            function getMin(arr) {
+                let len = arr.length;
+                let min = Infinity;
+
+                while (len--) {
+                    min = arr[len] < min ? arr[len] : min;
+                }
+                return min;
+            }
+
+            function playAudio(data) {
+                const maxVal = getMax(data);
+                const minVal = getMin(data);
+
+                document.body.insertAdjacentHTML('beforeend', `<p> ${maxVal} ${minVal}</p>`);
+
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const sampleRate = 44100;
+                const buffer = audioCtx.createBuffer(1, data.length, sampleRate);
+
+                buffer.copyToChannel(data, 0);
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioCtx.destination);
+                source.start();
+            }
+
+            document.querySelector('#load').addEventListener('click', test);
+        </script>
+    </body>
+</html>
