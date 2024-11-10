@@ -11,6 +11,7 @@
 <body>
     <button id="load">Load and Run Model</button>
     <script>
+        
         const modelUrls = {
             diffusion: 'https://media.githubusercontent.com/media/mdl262/RainLDM/main/distilled_q.onnx',
             decoder: 'https://media.githubusercontent.com/media/mdl262/RainLDM/main/decoder_q_gpu.onnx'
@@ -70,16 +71,18 @@
             try {
                 isInferenceRunning = true;
                 await initializeSessions();
+                const inputShape = [1, 1024, 1024];
 
                 console.log("Running diffusion model...");
-                const diffusionFeeds = { /* Define your input feeds here */ };
-                const diffusionOutput = await diffusionSession.run(diffusionFeeds);
+                let diffusionFeeds = { noise: createRandomTensor(inputShape) };
+                
+                let diffusionOutput = await diffusionSession.run(diffusionFeeds);
 
                 console.log("Running decoder model...");
-                const decoderFeed = { z_quantized: diffusionOutput.z };
-                const decoderOutput = await decoderSession.run(decoderFeed);
+                let decoderFeed = { z_quantized: diffusionOutput.z };
+                let decoderOutput = await decoderSession.run(decoderFeed);
 
-                const audioData = new Float32Array(decoderOutput.s.data);
+                let audioData = new Float32Array(decoderOutput.s.data);
                 if (audioData.length > 0) {
                     console.log("Pushing audio data to queue...");
                     await pushAudioToQueue(audioData);
@@ -91,6 +94,20 @@
             } finally {
                 isInferenceRunning = false;
             }
+        }
+
+        // Gaussian random generator for random tensor data
+        function gaussianRandom() {
+            let u = Math.random(), v = Math.random();
+            const mag = Math.sqrt(-2.0 * Math.log(u));
+            return mag * Math.cos(2.0 * Math.PI * v);
+        }
+
+        // Create random tensor data with specified shape
+        function createRandomTensor(shape) {
+            const size = shape.reduce((a, b) => a * b);
+            const randomData = new Float32Array(size).map(() => gaussianRandom());
+            return new ort.Tensor('float32', randomData, shape);
         }
 
         async function pushAudioToQueue(audioData) {
