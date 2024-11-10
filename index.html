@@ -1,24 +1,26 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>ONNX Runtime JavaScript Example with Caching</title>
+    <title>ONNX Runtime JavaScript Example with Caching and Audio Queue</title>
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
     <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
-
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.all.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/npyjs"></script>
     <script src="https://unpkg.com/wasm-feature-detect/dist/umd/index.js"></script>
 </head>
-
 <body>
-    <button id="load">Load Model</button>
+    <button id="load">Load and Run Model</button>
     <script>
         const modelUrls = {
-            diffusion: './distilled_q.onnx',
-            decoder: './decoder_q_gpu.onnx'
+            diffusion: 'https://media.githubusercontent.com/media/mdl262/RainLDM/main/distilled_q.onnx',
+            decoder: 'https://media.githubusercontent.com/media/mdl262/RainLDM/main/decoder_q_gpu.onnx'
         };
         let diffusionSession, decoderSession;
+        const audioQueue = [];
+        let isInferenceRunning = false;
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        document.querySelector('#load').addEventListener('click', runModel);
 
         async function fetchAndCacheModel(url) {
             const cache = await caches.open('model-cache');
@@ -48,7 +50,7 @@
                 ],
             };
 
-            // Load diffusion and decoder models from cache/network
+            // Load models from cache or network
             const diffusionModelBuffer = await loadModel(modelUrls.diffusion);
             const decoderModelBuffer = await loadModel(modelUrls.decoder);
 
@@ -59,12 +61,85 @@
             console.log("Models loaded and sessions initialized.");
         }
 
-        document.querySelector('#load').addEventListener('click', async () => {
-            await initializeSessions();
-            console.log("Model sessions ready for inference.");
-            // You can now run inference on these sessions as needed
-        });
+        async function runModel() {
+            if (isInferenceRunning) {
+                console.log("Inference already running, skipping...");
+                return;
+            }
+
+            try {
+                isInferenceRunning = true;
+                await initializeSessions();
+
+                console.log("Running diffusion model...");
+                const diffusionFeeds = { /* Define your input feeds here */ };
+                const diffusionOutput = await diffusionSession.run(diffusionFeeds);
+
+                console.log("Running decoder model...");
+                const decoderFeed = { z_quantized: diffusionOutput.z };
+                const decoderOutput = await decoderSession.run(decoderFeed);
+
+                const audioData = new Float32Array(decoderOutput.s.data);
+                if (audioData.length > 0) {
+                    console.log("Pushing audio data to queue...");
+                    await pushAudioToQueue(audioData);
+                } else {
+                    console.error("Error: Audio data shape is invalid.");
+                }
+            } catch (e) {
+                console.error("Inference failed:", e);
+            } finally {
+                isInferenceRunning = false;
+            }
+        }
+
+        async function pushAudioToQueue(audioData) {
+            console.log(`Audio queue length: ${audioQueue.length}`);
+            if (audioQueue.length >= 5) {
+                console.log("Waiting for space in audio queue...");
+                await waitForSpaceInQueue();
+            }
+            audioQueue.push(audioData);
+            console.log("Audio data pushed to queue. Queue length now:", audioQueue.length);
+
+            if (audioQueue.length === 1) {
+                playNextInQueue();
+            }
+        }
+
+        async function waitForSpaceInQueue() {
+            return new Promise(resolve => {
+                const interval = setInterval(() => {
+                    if (audioQueue.length < 5) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 100); // Check every 100 ms
+            });
+        }
+
+        function playNextInQueue() {
+            if (audioQueue.length === 0) return;
+
+            const audioData = audioQueue.shift();
+            console.log("Playing audio from queue. Remaining items:", audioQueue.length);
+
+            const buffer = audioContext.createBuffer(1, audioData.length, audioContext.sampleRate);
+            buffer.copyToChannel(audioData, 0);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.onended = () => {
+                console.log("Audio finished playing.");
+                if (audioQueue.length > 0) {
+                    playNextInQueue();
+                } else {
+                    console.log("Queue is empty.");
+                }
+            };
+            source.start();
+        }
     </script>
 </body>
-
 </html>
