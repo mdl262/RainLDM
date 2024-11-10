@@ -11,7 +11,6 @@
 <body>
     <button id="load">Load and Run Model</button>
     <script>
-        
         const modelUrls = {
             diffusion: 'https://media.githubusercontent.com/media/mdl262/RainLDM/main/distilled_q.onnx',
             decoder: 'https://media.githubusercontent.com/media/mdl262/RainLDM/main/decoder_q_gpu.onnx'
@@ -73,22 +72,37 @@
                 await initializeSessions();
                 const inputShape = [1, 1024, 1024];
 
-                console.log("Running diffusion model...");
-                let diffusionFeeds = { noise: createRandomTensor(inputShape) };
-                
-                let diffusionOutput = await diffusionSession.run(diffusionFeeds);
+                let playbackStart = false;
 
-                console.log("Running decoder model...");
-                let decoderFeed = { z_quantized: diffusionOutput.z };
-                let decoderOutput = await decoderSession.run(decoderFeed);
+                // Call models and fill the queue continuously
+                while (audioQueue.length < 5) {
+                    console.log("Running diffusion model...");
+                    let diffusionFeeds = { noise: createRandomTensor(inputShape) };
+                    
+                    let diffusionOutput = await diffusionSession.run(diffusionFeeds);
 
-                let audioData = new Float32Array(decoderOutput.s.data);
-                if (audioData.length > 0) {
-                    console.log("Pushing audio data to queue...");
-                    await pushAudioToQueue(audioData);
-                } else {
-                    console.error("Error: Audio data shape is invalid.");
+                    console.log("Running decoder model...");
+                    let decoderFeed = { z_quantized: diffusionOutput.z };
+                    let decoderOutput = await decoderSession.run(decoderFeed);
+
+                    let audioData = new Float32Array(decoderOutput.s.data);
+                    if (audioData.length > 0) {
+                        console.log("Pushing audio data to queue...");
+                        await pushAudioToQueue(audioData);
+
+                    } else {
+                        console.error("Error: Audio data shape is invalid.");
+                    }
+
+                    if (!playbackStart) {
+                        playNextInQueue();
+                        playbackStart = true;
+                    }
                 }
+
+                console.log("Queue has 5 items, starting audio playback.");
+                //playNextInQueue();  // Start playing the audio once we have 5 items in the queue
+
             } catch (e) {
                 console.error("Inference failed:", e);
             } finally {
@@ -118,10 +132,6 @@
             }
             audioQueue.push(audioData);
             console.log("Audio data pushed to queue. Queue length now:", audioQueue.length);
-
-            if (audioQueue.length === 1) {
-                playNextInQueue();
-            }
         }
 
         async function waitForSpaceInQueue() {
@@ -151,8 +161,6 @@
                 console.log("Audio finished playing.");
                 if (audioQueue.length > 0) {
                     playNextInQueue();
-                } else {
-                    console.log("Queue is empty.");
                 }
             };
             source.start();
