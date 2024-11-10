@@ -8,9 +8,8 @@
         <script src="https://cdn.jsdelivr.net/npm/npyjs"></script>
     
         <script src="https://unpkg.com/wasm-feature-detect/dist/umd/index.js"></script>
-        <script>
-            
-        </script>
+        <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+        <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     </head>
     <body>
         <button id="load">Load Model</button>
@@ -62,13 +61,14 @@
 
                     const sessionOptions = {
                         executionProviders: ['wasm'],
+                        enableWebAssemblyThreads: true,
                         wasm: {
                             numThreads: 4,
                             simd: true,
                         },
                     };
 
-                    const unetsession = await ort.InferenceSession.create('github.com/mdl262/RainLDM/blob/91329c58e4034b1d447cc8ab6700a0c02a76bc52/distilled_q.onnx', sessionOptions); 
+                    const unetsession = await ort.InferenceSession.create('.//distilled_q.onnx', sessionOptions); 
                     document.body.insertAdjacentHTML('beforeend', '<p>Diffusion model loaded.</p>'); 
                     logMemoryUsage("After loading diffusion model");
                     
@@ -83,7 +83,7 @@
 
                     await unetsession.release();
 
-                    const decodersession = await ort.InferenceSession.create('github.com/mdl262/RainLDM/blob/91329c58e4034b1d447cc8ab6700a0c02a76bc52/tiny_decoder_q.onnx', sessionOptions);
+                    const decodersession = await ort.InferenceSession.create('./tiny_decoder_q.onnx', sessionOptions);
                     document.body.insertAdjacentHTML('beforeend', '<p>Decoder model loaded.</p>');
                     logMemoryUsage("After loading decoder model");
 
