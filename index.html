@@ -75,7 +75,8 @@
                 let playbackStart = false;
 
                 // Call models and fill the queue continuously
-                while (audioQueue.length < 5) {
+                while (true) {
+                    await waitForSpaceInQueue()
                     console.log("Running diffusion model...");
                     let diffusionFeeds = { noise: createRandomTensor(inputShape) };
                     
